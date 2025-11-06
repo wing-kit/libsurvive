@@ -132,14 +132,27 @@ if(APPLE)
 endif()
 
 
-find_library(LIBUSB_LIBRARY NAMES usb-1.0 libusb-1.0)
-
 IF(WIN32)
 	set(packages_config "<packages><package id=\"libusb\" version=\"1.0.21\" targetFramework=\"native\" /></packages>")
 	file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/packages.config ${packages_config})
 	set(driver_vive_ADDITIONAL_SRCS ${driver_vive_ADDITIONAL_SRCS} ${CMAKE_CURRENT_BINARY_DIR}/packages.config)
     include_directories("${CMAKE_BINARY_DIR}/packages/libusb.1.0.21/src/include")
     SET(LIBUSB_LIBRARY "${CMAKE_BINARY_DIR}/packages/libusb.1.0.21/lib/native/${WIN_PLATFORMx}/libusb-1.0.lib")
+else()
+  # Try to find libusb using pkg-config first
+  find_package(PkgConfig QUIET)
+  if(PKG_CONFIG_FOUND)
+    pkg_check_modules(LIBUSB_PKG QUIET libusb-1.0)
+    if(LIBUSB_PKG_FOUND AND LIBUSB_PKG_LIBRARIES)
+      # Use pkg-config library paths to find the actual library file
+      find_library(LIBUSB_LIBRARY NAMES usb-1.0 libusb-1.0 HINTS ${LIBUSB_PKG_LIBRARY_DIRS} PATHS ${LIBUSB_PKG_LIBRARY_DIRS})
+    endif()
+  endif()
+  
+  # Fallback to standard find_library if pkg-config didn't work
+  if(NOT LIBUSB_LIBRARY)
+    find_library(LIBUSB_LIBRARY NAMES usb-1.0 libusb-1.0)
+  endif()
 endif()
 
 IF(NOT WIN32)
@@ -162,7 +175,12 @@ IF(NOT USE_HIDAPI)
     add_definitions(-DSURVIVE_LIBUSB_UNVER_DIR)
   endif()
 
-  set(driver_vive_ADDITIONAL_LIBS ${LIBUSB_LIBRARY})
+  # Only set LIBUSB_LIBRARY if it was found
+  if(LIBUSB_LIBRARY AND NOT LIBUSB_LIBRARY STREQUAL "LIBUSB_LIBRARY-NOTFOUND")
+    set(driver_vive_ADDITIONAL_LIBS ${LIBUSB_LIBRARY})
+  else()
+    message(FATAL_ERROR "libusb-1.0 library not found. Please install libusb-1.0-dev (or libusb-1.0-devel on RPM-based systems)")
+  endif()
 
   find_library(PCAP_LIBRARY pcap)
   if(PCAP_LIBRARY)
